@@ -25,17 +25,42 @@ type ColumnSchema struct {
 }
 
 type Format = int
+type AppExitCode = int
 
 const (
 	Json Format = iota
 	Csv
 )
 
-func must[T any](res T, err error) T {
+const (
+	SuccessCode AppExitCode = iota
+
+	ConnectErrorCode
+	TableInfoErrorCode
+	InsertDataErrorCode
+	UnmarshalErrorCode
+
+	ReadDirErrorCode
+	ReadFileErrorCode
+	OpenFileErrorCode
+)
+
+var exitCodeDescription = map[AppExitCode]string{
+	SuccessCode:         "success",
+	ConnectErrorCode:    "error on connect to db",
+	TableInfoErrorCode:  "error on get table info",
+	InsertDataErrorCode: "error on data insert in table",
+	UnmarshalErrorCode:  "error on unmarshal inserted data",
+	ReadDirErrorCode:    "error on read dir",
+	ReadFileErrorCode:   "error on read file",
+	OpenFileErrorCode:   "error on open file",
+}
+
+func handleError(err error, errorCode AppExitCode) {
 	if err != nil {
-		panic(err)
+		fmt.Println(fmt.Errorf("%s: %w", exitCodeDescription[errorCode], err).Error())
+		os.Exit(errorCode)
 	}
-	return res
 }
 
 func try(err error) {
@@ -103,13 +128,24 @@ func main() {
 	flag.StringVar(&userId, "u", "test", "user id")
 	flag.StringVar(&password, "p", "test", "user password")
 	flag.StringVar(&dirPath, "d", "test_data", "path to dir with data to upload")
+
+	flag.Usage = func() {
+		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nReturn codes:\n")
+		for i := range len(exitCodeDescription) {
+			fmt.Fprintf(os.Stderr, "  %d => %s\n", i, exitCodeDescription[i])
+		}
+	}
 	flag.Parse()
 
 	connectionString := fmt.Sprintf("Data Source=%s; Initial Catalog=%s;User ID=%s;Password=%s;", dataSource, initialCatalog, userId, password)
-	db := must(sqlx.Open("sqlserver", connectionString))
+	db, err := sqlx.Open("sqlserver", connectionString)
+	handleError(err, ConnectErrorCode)
 	defer db.Close()
 
-	files := must(os.ReadDir(dirPath))
+	files, err := os.ReadDir(dirPath)
+	handleError(err, ReadDirErrorCode)
+
 	for _, file := range files {
 		fileName := file.Name()
 		filePath := fmt.Sprintf("%s/%s", dirPath, fileName)
@@ -122,20 +158,31 @@ func main() {
 			return nameAndExt[0], getFileFormat(nameAndExt[1])
 		}(fileName)
 
-		schema := must(getTableSchema(db, tableName))
-		isTableIdentity := must(isTableHasIdentity(db, tableName))
-		computeColumns := must(getComputeColumns(db, tableName))
+		schema, err := getTableSchema(db, tableName)
+		handleError(err, TableInfoErrorCode)
+
+		isTableIdentity, err := isTableHasIdentity(db, tableName)
+		handleError(err, TableInfoErrorCode)
+
+		computeColumns, err := getComputeColumns(db, tableName)
+		handleError(err, TableInfoErrorCode)
 
 		var allRecords []map[string]any
 		switch ext {
 		case Json:
-			data := must(os.ReadFile(filePath))
+			data, err := os.ReadFile(filePath)
+			handleError(err, ReadFileErrorCode)
+
 			try(json.Unmarshal(data, &allRecords))
+			handleError(err, UnmarshalErrorCode)
 		case Csv:
-			file := must(os.Open(filePath))
+			file, err := os.Open(filePath)
+			handleError(err, OpenFileErrorCode)
+
 			r := csv.NewReader(file)
 			r.Comma = ';'
-			headers := must(r.Read())
+			headers, err := r.Read()
+			handleError(err, UnmarshalErrorCode)
 			for {
 				record, err := r.Read()
 				if err == io.EOF {
@@ -206,8 +253,10 @@ func main() {
 				query = identityON + query + identityOFF
 			}
 			fmt.Println("query ", query)
-			must(db.Exec(query, values...))
+			_, err := db.Exec(query, values...)
+			handleError(err, InsertDataErrorCode)
 		}
 	}
 	fmt.Println("Upload done")
+	os.Exit(SuccessCode)
 }
