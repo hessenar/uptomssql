@@ -1,26 +1,26 @@
 # uptomssql
 
-Help:
-  -c string
-        initial catalog (default "master")
-  -d string
-        path to dir with data to upload (default "test_data")
-  -p string
-        user password (default "test")
-  -s string
-        db data source (default "localhost,1433")
-  -u string
-        user id (default "test")
+Help:  
+* -c string  
+initial catalog (default "master")  
+* -d string  
+path to dir with data to upload (default "test_data")  
+* -p string  
+user password (default "test")  
+* -s string  
+db data source (default "localhost,1433")  
+* -u string  
+user id (default "test")
 
 Return codes:
-  0 => success
-  1 => error on connect to db
-  2 => error on get table info
-  3 => error on data insert in table
-  4 => error on unmarshal inserted data
-  5 => error on read dir
-  6 => error on read file
-  7 => error on open file
+* 0 => success
+* 1 => error on connect to db
+* 2 => error on get table info
+* 3 => error on data insert in table
+* 4 => error on unmarshal inserted data
+* 5 => error on read dir
+* 6 => error on read file
+* 7 => error on open file
 
 
 ## License
